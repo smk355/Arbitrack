@@ -3,6 +3,8 @@ backend/__pycache__/
 backend/*.pyc
 backend/.env
 backend/token.json
+backend/instrument_map.json
+backend/all_instruments.json
 
 frontend/node_modules/
 frontend/dist/

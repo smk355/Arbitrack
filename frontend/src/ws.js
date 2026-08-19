@@ -1,10 +1,10 @@
 // Data layer: connects to the backend WS, normalizes ticks, and keeps a
-// small in-memory per-symbol history buffer for the sparkline charts.
+// small in-memory per-symbol history buffer (for a future history view).
 // Exposes a plain pub/sub store consumable via useSyncExternalStore.
 //
-// Expected backend message shape (see ws_server.py):
+// Expected backend message shape (see ws_server.py / spread_engine.py):
 //   either a bare array of quote objects, or { quotes: [...] } / { data: [...] }
-//   each quote: { symbol, exchange, ltp, bid, ask, spread_pct, ts }
+//   each quote: { symbol, name, nse_price, bse_price, spread, spread_pct, ts }
 //
 // If no backend is reachable within DEMO_FALLBACK_DELAY_MS, falls back to a
 // simulated tick generator so the UI is visible without the backend running.
@@ -57,10 +57,10 @@ function normalizeIncoming(raw) {
   const list = Array.isArray(raw) ? raw : raw.quotes || raw.data || [];
   return list.map((q) => ({
     symbol: q.symbol,
-    exchange: q.exchange ?? "NSE",
-    ltp: Number(q.ltp ?? q.last_price ?? 0),
-    bid: Number(q.bid ?? 0),
-    ask: Number(q.ask ?? 0),
+    name: q.name ?? q.symbol,
+    nsePrice: Number(q.nse_price ?? q.nsePrice ?? 0),
+    bsePrice: Number(q.bse_price ?? q.bsePrice ?? 0),
+    spread: Number(q.spread ?? 0),
     spreadPct: Number(q.spread_pct ?? q.spreadPct ?? 0),
     ts: q.ts ?? Date.now(),
   }));
@@ -73,7 +73,7 @@ function applyBatch(list) {
     if (!q.symbol) continue;
     nextQuotes[q.symbol] = q;
     const prev = nextHistory[q.symbol] || [];
-    const point = { ts: q.ts, ltp: q.ltp, spreadPct: q.spreadPct };
+    const point = { ts: q.ts, nsePrice: q.nsePrice, bsePrice: q.bsePrice, spreadPct: q.spreadPct };
     const arr = prev.length >= HISTORY_LIMIT ? [...prev.slice(1), point] : [...prev, point];
     nextHistory[q.symbol] = arr;
   }
@@ -143,15 +143,15 @@ function startDemo() {
     for (let i = 0; i < tickCount; i++) {
       const symbol = WATCHLIST_SYMBOLS[Math.floor(Math.random() * WATCHLIST_SYMBOLS.length)];
       bases[symbol] *= 1 + (Math.random() - 0.5) * 0.004;
-      const mid = bases[symbol];
-      const spreadPct = 0.02 + Math.random() * 0.6;
-      const halfSpread = (mid * spreadPct) / 200;
+      const nsePrice = bases[symbol];
+      const spreadPct = (Math.random() - 0.5) * 1.2;
+      const bsePrice = nsePrice / (1 + spreadPct / 100);
       batch.push({
         symbol,
-        exchange: "NSE",
-        ltp: mid,
-        bid: mid - halfSpread,
-        ask: mid + halfSpread,
+        name: symbol,
+        nsePrice,
+        bsePrice,
+        spread: nsePrice - bsePrice,
         spreadPct,
         ts: Date.now(),
       });

@@ -10,11 +10,20 @@ UPSTOX_REDIRECT_URI = os.getenv("UPSTOX_REDIRECT_URI", "http://localhost:8000/ca
 
 UPSTOX_AUTH_URL = "https://api.upstox.com/v2/login/authorization/dialog"
 UPSTOX_TOKEN_URL = "https://api.upstox.com/v2/login/authorization/token"
+UPSTOX_QUOTES_URL = "https://api.upstox.com/v2/market-quote/quotes"
+
+NSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
+BSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/BSE.json.gz"
 
 TOKEN_FILE = "token.json"
+INSTRUMENT_MAP_FILE = "instrument_map.json"
+ALL_INSTRUMENTS_FILE = "all_instruments.json"
 
-# Spread ranking: percentage of mid-price, (ask - bid) / midprice * 100
-SPREAD_THRESHOLD_PCT = 0.5
+# Free tier allows 50 req/min; polling once per tick covers the whole
+# watchlist (one call, both exchanges) so this stays well under that.
+POLL_INTERVAL_SECONDS = 3
+
+# Arbitrage spread: (nse_price - bse_price) / bse_price * 100
 
 # NSE trading symbols. Verified against live NIFTY 50 constituents
 # (fetched 2026-08-18). Instrument keys (Upstox instrument_key per
@@ -36,10 +45,25 @@ NIFTY_50_SYMBOLS = [
 ]
 
 EXTRA_SYMBOLS = [
-    "MAHABANK",
-    "IDFCFIRSTB",
-    "UJJIVANSFB",
-    "AUBANK",
+    "MAHABANK","IDFCFIRSTB","UJJIVANSFB",
+    "AUBANK","INDUSINDBK","FEDERALBNK","BANKBARODA", "PNB","CANBK",
+    "UNIONBANK","BANDHANBNK","RBLBANK","YESBANK","IDBI",
+    "LICHSGFIN","CHOLAFIN","MUTHOOTFIN",
+    "MANAPPURAM","PFC", "RECLTD","LTM","MPHASIS",
+    "COFORGE","PERSISTENT","OFSS","KPITTECH",
+
+    "CYIENT","TATAELXSI","TATATECH","MINDTREE",
+    "DMART","DABUR","GODREJCP","MARICO","COLPAL",
+    "BERGEPAINT","JUBLFOOD","UNITDSPR",
+    "VBL","NYKAA",    "SIEMENS",
+    "ABB","CUMMINSIND","BHEL","HAL","BEL","BEML",
+    "RVNL","IRFC","IRCON","ADANIGREEN",
+    "ADANIPOWER","TATAPOWER","TORNTPOWER",
+    "NHPC","SJVN","GAIL","IOC","BPCL",
+    "HINDPETRO","DIVISLAB","TORNTPHARM",
+    "ZYDUSLIFE","LUPIN","AUROPHARMA",
+    "BIOCON","ALKEM",
+    "IPCALAB","LAURUSLABS","GLAND",
 ]
 
 WATCHLIST_SYMBOLS = sorted(set(NIFTY_50_SYMBOLS) | set(EXTRA_SYMBOLS))
