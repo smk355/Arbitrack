@@ -127,8 +127,140 @@ body {
   letter-spacing: 1px;
 }
 
+.content-row {
+  display: flex;
+  align-items: flex-start;
+}
+
 .table-section {
+  flex: 1 1 100%;
+  min-width: 0;
   padding: 32px 24px 64px;
+  transition: flex-basis 250ms ease;
+}
+
+.content-row.history-open .table-section {
+  flex-basis: 45%;
+}
+
+.history-panel {
+  flex: 1 1 55%;
+  min-width: 0;
+  margin: 32px 24px 64px 0;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-panel-symbol {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.history-panel-name {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.history-panel-close {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.history-panel-close:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.range-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.range-tab {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.range-tab:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.range-tab-active,
+.range-tab-active:hover {
+  color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.history-chart-wrap {
+  position: relative;
+  height: 420px;
+}
+
+.history-chart {
+  width: 100%;
+  height: 100%;
+}
+
+.history-chart-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.history-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .table-header {

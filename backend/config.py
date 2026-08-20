@@ -11,6 +11,7 @@ UPSTOX_REDIRECT_URI = os.getenv("UPSTOX_REDIRECT_URI", "http://localhost:8000/ca
 UPSTOX_AUTH_URL = "https://api.upstox.com/v2/login/authorization/dialog"
 UPSTOX_TOKEN_URL = "https://api.upstox.com/v2/login/authorization/token"
 UPSTOX_QUOTES_URL = "https://api.upstox.com/v2/market-quote/quotes"
+UPSTOX_HISTORICAL_CANDLE_URL = "https://api.upstox.com/v2/historical-candle"
 
 NSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 BSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/BSE.json.gz"
@@ -18,6 +19,13 @@ BSE_INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchan
 TOKEN_FILE = "token.json"
 INSTRUMENT_MAP_FILE = "instrument_map.json"
 ALL_INSTRUMENTS_FILE = "all_instruments.json"
+HISTORY_CACHE_FILE = "history_cache.json"
+
+# One superset series per instrument (HISTORY_YEARS_BACK of daily candles) —
+# the /history endpoint slices 1M/6M/YTD/5Y out of this same series rather
+# than making a separate upstream call per range.
+HISTORY_CANDLE_INTERVAL = "day"
+HISTORY_YEARS_BACK = 5
 
 # Free tier allows 50 req/min; polling once per tick covers the whole
 # watchlist (one call, both exchanges) so this stays well under that.

@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+from urllib.parse import quote
 
 import httpx
 
@@ -135,3 +136,21 @@ def fetch_quotes(instrument_keys: list[str]) -> dict:
     )
     resp.raise_for_status()
     return resp.json().get("data", {})
+
+
+def fetch_historical_candles(instrument_key: str, interval: str, from_date: str, to_date: str) -> list:
+    """Returns raw candle rows from the historical-candle endpoint:
+    [[timestamp, open, high, low, close, volume, oi], ...].
+
+    instrument_key (e.g. "NSE_EQ|INE002A01018") contains a "|", which must
+    be percent-encoded since it's placed directly into the URL path.
+    """
+    token = get_access_token()
+    url = f"{config.UPSTOX_HISTORICAL_CANDLE_URL}/{quote(instrument_key, safe='')}/{interval}/{to_date}/{from_date}"
+    resp = httpx.get(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json().get("data", {}).get("candles", [])
