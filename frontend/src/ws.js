@@ -62,6 +62,10 @@ function normalizeIncoming(raw) {
     bsePrice: Number(q.bse_price ?? q.bsePrice ?? 0),
     spread: Number(q.spread ?? 0),
     spreadPct: Number(q.spread_pct ?? q.spreadPct ?? 0),
+    nseBidQty: Number(q.nse_bid_qty ?? q.nseBidQty ?? 0),
+    nseAskQty: Number(q.nse_ask_qty ?? q.nseAskQty ?? 0),
+    bseBidQty: Number(q.bse_bid_qty ?? q.bseBidQty ?? 0),
+    bseAskQty: Number(q.bse_ask_qty ?? q.bseAskQty ?? 0),
     ts: q.ts ?? Date.now(),
   }));
 }

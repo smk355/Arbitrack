@@ -20,8 +20,35 @@ const RANGES = [
   { key: "5y", label: "5Y" },
 ];
 
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+// Range tabs are a client-side viewport preset over the full already-loaded
+// series, not a data query — "5y" isn't computed here since it just means
+// "everything," handled by fitContent() at the call site instead of a
+// hardcoded 5-year window that would drift if HISTORY_YEARS_BACK changes.
+function visibleWindowFor(rangeKey) {
+  const to = new Date();
+  const from = new Date(to);
+  if (rangeKey === "6m") {
+    from.setUTCMonth(from.getUTCMonth() - 6);
+  } else if (rangeKey === "ytd") {
+    from.setUTCMonth(0);
+    from.setUTCDate(1);
+  } else {
+    from.setUTCMonth(from.getUTCMonth() - 1); // "1m" (also the fallback)
+  }
+  return { from: isoDate(from), to: isoDate(to) };
+}
+
+function sliceByWindow(series, { from, to }) {
+  return series.filter(([date]) => date >= from && date <= to);
+}
+
 // series is [[dateStr, close], ...], ascending — color reflects that one
-// series' own move over the fetched range, independent of the other.
+// series' own move over the currently-viewed window, independent of the
+// other series and recomputed per range tab (not a fixed 5-year direction).
 function seriesColor(series) {
   if (!series || series.length === 0) return COLOR_GOOD;
   const first = series[0][1];
@@ -43,11 +70,9 @@ function formatCrosshairTime(time) {
 
 export default function HistoryPanel({ symbol, name, onClose }) {
   const [range, setRange] = useState("1m");
-  // Tagged with the (symbol, range) it answers, same idea as the search
-  // dropdown's remoteResults — lets loading/error/data all be derived below
-  // instead of reset with a synchronous setState at the top of the effect
-  // (which would fire on every render and race a slower, superseded request
-  // against a newer one).
+  // Tagged with the symbol it answers, same idea as the search dropdown's
+  // remoteResults — lets loading/error/data be derived below instead of
+  // reset with a synchronous setState at the top of the effect.
   const [result, setResult] = useState(null);
 
   const containerRef = useRef(null);
@@ -55,10 +80,11 @@ export default function HistoryPanel({ symbol, name, onClose }) {
   const chartRef = useRef(null);
   const seriesRef = useRef({ nse: null, bse: null });
 
-  // Fetch on symbol/range change.
+  // Fetch the full series once per symbol — range tabs no longer trigger a
+  // re-fetch, they just move the viewport over this same loaded data.
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/history/${symbol}?range=${range}`)
+    fetch(`${API_BASE}/history/${symbol}`)
       .then((res) => {
         if (!res.ok) {
           throw new Error(res.status === 404 ? "No history for this symbol yet" : "Failed to load history");
@@ -67,24 +93,24 @@ export default function HistoryPanel({ symbol, name, onClose }) {
       })
       .then((json) => {
         if (cancelled) return;
-        setResult({ symbol, range, data: json, error: null });
+        setResult({ symbol, data: json, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setResult({ symbol, range, data: null, error: err.message || "Failed to load history" });
+        setResult({ symbol, data: null, error: err.message || "Failed to load history" });
       });
     return () => {
       cancelled = true;
     };
-  }, [symbol, range]);
+  }, [symbol]);
 
-  const isCurrent = result && result.symbol === symbol && result.range === range;
+  const isCurrent = result && result.symbol === symbol;
   const data = isCurrent ? result.data : null;
   const error = isCurrent ? result.error : null;
   const loading = !isCurrent;
 
   // Chart instance lifecycle — one per symbol, not recreated on range change
-  // (range change just re-feeds data into the existing series below).
+  // (range change just moves the existing chart's viewport, below).
   useEffect(() => {
     const chart = createChart(containerRef.current, {
       autoSize: true,
@@ -136,8 +162,8 @@ export default function HistoryPanel({ symbol, name, onClose }) {
     };
   }, [symbol]);
 
-  // Push fetched data into the (already-created) series, colored by each
-  // series' own direction over the range.
+  // Push the full fetched series into the series once — happens only when
+  // new data arrives for this symbol, not on every range-tab click.
   useEffect(() => {
     if (!data || !chartRef.current) return;
     const { nse: nseSeries, bse: bseSeries } = seriesRef.current;
@@ -145,11 +171,30 @@ export default function HistoryPanel({ symbol, name, onClose }) {
 
     nseSeries.setData(data.nse.map(([time, value]) => ({ time, value })));
     bseSeries.setData(data.bse.map(([time, value]) => ({ time, value })));
-    nseSeries.applyOptions({ color: seriesColor(data.nse) });
-    bseSeries.applyOptions({ color: seriesColor(data.bse) });
-
-    chartRef.current.timeScale().fitContent();
   }, [data]);
+
+  // Range tabs move the viewport over the already-loaded full series (no
+  // network round-trip) — recomputed whenever the tab changes or new data
+  // arrives, so the default tab's window applies as soon as data loads.
+  // Zooming/panning past this window is unrestricted since the full 5-year
+  // series is already sitting in the chart.
+  useEffect(() => {
+    if (!data || !chartRef.current) return;
+    const { nse: nseSeries, bse: bseSeries } = seriesRef.current;
+    if (!nseSeries || !bseSeries) return;
+
+    if (range === "5y") {
+      chartRef.current.timeScale().fitContent();
+      nseSeries.applyOptions({ color: seriesColor(data.nse) });
+      bseSeries.applyOptions({ color: seriesColor(data.bse) });
+      return;
+    }
+
+    const window = visibleWindowFor(range);
+    chartRef.current.timeScale().setVisibleRange(window);
+    nseSeries.applyOptions({ color: seriesColor(sliceByWindow(data.nse, window)) });
+    bseSeries.applyOptions({ color: seriesColor(sliceByWindow(data.bse, window)) });
+  }, [data, range]);
 
   return (
     <section className="history-panel">

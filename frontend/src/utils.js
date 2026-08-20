@@ -2,12 +2,19 @@
 // not here — mixing a JSX-returning component into a file of plain
 // exports breaks Vite's react-refresh Fast Refresh boundary detection.)
 
-// Approximate intraday equity cost model for the net-profit calculator.
-// These are simplified round numbers, not exact brokerage/STT/exchange
-// regulatory figures — tune as needed.
-export const BUY_FEE_PCT = 0.15; // % of capitalUsed — brokerage/stamp duty on buy leg
-export const SELL_FEE_FLAT = 20; // ₹ flat brokerage on sell leg
-export const GST_PCT = 18; // % GST, applied on (buyFee + sellFee)
+// Intraday equity cost model for the net-profit calculator, matching real
+// Zerodha/Upstox-style discount-broker charges (not simplified round
+// numbers) — see calcLegCost below for how each applies.
+export const BROKERAGE_CAP = 20; // ₹ flat cap per executed order
+export const BROKERAGE_PCT = 0.03; // % of turnover — whichever is LOWER than the cap wins
+export const STT_PCT = 0.025; // % of turnover, sell side only (intraday equity rate)
+export const NSE_EXCHANGE_PCT = 0.00307; // % exchange transaction charge on NSE
+export const BSE_EXCHANGE_PCT = 0.00375; // % exchange transaction charge on BSE
+export const SEBI_PCT = 0.0001; // % of turnover, both legs
+export const STAMP_DUTY_PCT = 0.003; // % of turnover, buy side only
+export const GST_PCT = 18; // % GST — applied ONLY to (brokerage + exchange charge + SEBI
+// charge), NOT to STT or stamp duty, since those are themselves government
+// taxes rather than broker service fees.
 
 export const SEARCH_RESULTS_LIMIT = 15;
 
@@ -21,21 +28,53 @@ export function formatPct(n) {
   return `${Math.abs(n).toFixed(3)}%`;
 }
 
-// shares === 0 means the entered amount can't buy a single share — signal
-// that to the caller with null so the row can render "—" instead of a number.
-export function calcNetProfit(nsePrice, bsePrice, amount) {
-  const buyPrice = Math.min(nsePrice, bsePrice);
-  const sellPrice = Math.max(nsePrice, bsePrice);
-  const shares = Math.floor(amount / buyPrice);
-  if (shares === 0) return null;
+// Share counts, not currency — no decimals (unlike formatINR).
+export function formatQty(n) {
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-IN");
+}
 
-  const capitalUsed = shares * buyPrice;
-  const grossProfit = shares * (sellPrice - buyPrice);
-  const buyFee = capitalUsed * (BUY_FEE_PCT / 100);
-  const sellFee = SELL_FEE_FLAT;
-  const gst = (buyFee + sellFee) * (GST_PCT / 100);
+function calcLegCost(turnover, exchangePct, { isBuyLeg, isSellLeg }) {
+  const brokerage = Math.min(BROKERAGE_CAP, turnover * (BROKERAGE_PCT / 100));
+  const exchangeCharge = turnover * (exchangePct / 100);
+  const sebiCharge = turnover * (SEBI_PCT / 100);
+  const stt = isSellLeg ? turnover * (STT_PCT / 100) : 0;
+  const stampDuty = isBuyLeg ? turnover * (STAMP_DUTY_PCT / 100) : 0;
+  const gst = (brokerage + exchangeCharge + sebiCharge) * (GST_PCT / 100);
+  return brokerage + exchangeCharge + sebiCharge + stt + stampDuty + gst;
+}
 
-  return grossProfit - buyFee - sellFee - gst;
+// Sized from real order-book depth, not a typed amount — executableQty is
+// the most shares actually tradeable right now, capped by whichever leg
+// (buying from the cheaper exchange, selling into the pricier one) has
+// less liquidity. executableQty === 0 means the row can render "—" instead
+// of a number.
+export function calcNetProfit(q) {
+  const buyOnNse = q.nsePrice < q.bsePrice;
+  const buyPrice = buyOnNse ? q.nsePrice : q.bsePrice;
+  const sellPrice = buyOnNse ? q.bsePrice : q.nsePrice;
+
+  // Direction-correct depth pair only — buying FROM the cheaper exchange
+  // consumes ITS ask depth; selling TO the pricier exchange consumes ITS
+  // bid depth. Never mix these up or compare the other two depth columns —
+  // they aren't part of this row's actionable trade.
+  const askQty = buyOnNse ? q.nseAskQty : q.bseAskQty;
+  const bidQty = buyOnNse ? q.bseBidQty : q.nseBidQty;
+  const executableQty = Math.min(askQty, bidQty);
+
+  if (executableQty === 0) return null;
+
+  const buyTurnover = executableQty * buyPrice;
+  const sellTurnover = executableQty * sellPrice;
+  const grossProfit = executableQty * (sellPrice - buyPrice);
+
+  const buyExchangePct = buyOnNse ? NSE_EXCHANGE_PCT : BSE_EXCHANGE_PCT;
+  const sellExchangePct = buyOnNse ? BSE_EXCHANGE_PCT : NSE_EXCHANGE_PCT;
+
+  const buyCost = calcLegCost(buyTurnover, buyExchangePct, { isBuyLeg: true, isSellLeg: false });
+  const sellCost = calcLegCost(sellTurnover, sellExchangePct, { isBuyLeg: false, isSellLeg: true });
+
+  return grossProfit - buyCost - sellCost;
 }
 
 // Instant fallback shown while the debounced /search-symbols request is in

@@ -1,4 +1,14 @@
-import { BUY_FEE_PCT, SELL_FEE_FLAT, GST_PCT, calcNetProfit, formatINR, formatPct } from "./utils";
+import {
+  BROKERAGE_CAP,
+  BROKERAGE_PCT,
+  GST_PCT,
+  STAMP_DUTY_PCT,
+  STT_PCT,
+  calcNetProfit,
+  formatINR,
+  formatPct,
+  formatQty,
+} from "./utils";
 import PinIcon from "./PinIcon";
 
 const SPREAD_GOOD_THRESHOLD_PCT = 0.5;
@@ -17,12 +27,12 @@ export default function QuoteTable({
   ranked,
   sort,
   onSort,
-  enteredAmount,
   pinned,
   onTogglePin,
   flashSymbol,
   rowRefs,
   onHistoryClick,
+  selectedHistorySymbol,
 }) {
   if (ranked.length === 0) {
     return <div className="empty">Waiting for ticks…</div>;
@@ -37,40 +47,50 @@ export default function QuoteTable({
             <th>Symbol</th>
             <th>Name</th>
             <SortHeader label="NSE" sortKey="nse" sort={sort} onSort={onSort} className="num" />
+            <th className="num">NSE Bid Qty</th>
+            <th className="num">NSE Ask Qty</th>
             <SortHeader label="BSE" sortKey="bse" sort={sort} onSort={onSort} className="num" />
+            <th className="num">BSE Bid Qty</th>
+            <th className="num">BSE Ask Qty</th>
             <SortHeader label="Spread" sortKey="diff" sort={sort} onSort={onSort} className="num" />
             <SortHeader label="Spread %" sortKey="spreadPct" sort={sort} onSort={onSort} className="num" />
-            {enteredAmount !== null && (
-              <th className="num">
-                <span className="net-profit-header">
-                  Net Profit
-                  <span className="info-icon" tabIndex={0}>
-                    ⓘ
-                    <span className="info-tooltip">
-                      Net Profit = Gross Profit − Buy Fee − Sell Fee − GST
-                      <br />
-                      Gross Profit = shares × (sell price − buy price)
-                      <br />
-                      Buy Fee = {BUY_FEE_PCT}% × capital used
-                      <br />
-                      Sell Fee = ₹{SELL_FEE_FLAT} flat
-                      <br />
-                      GST = {GST_PCT}% × (Buy Fee + Sell Fee)
-                      <br />
-                      Shares = floor(amount ÷ buy price)
-                    </span>
+            <th className="num">
+              <span className="net-profit-header">
+                Net Profit
+                <span className="info-icon" tabIndex={0}>
+                  ⓘ
+                  <span className="info-tooltip">
+                    Net Profit = Gross Profit − Buy Leg Costs − Sell Leg Costs, where tradeable
+                    quantity = min(Ask Qty on the cheaper exchange, Bid Qty on the pricier
+                    exchange).
+                    <br />
+                    Costs include brokerage (min ₹{BROKERAGE_CAP} or {BROKERAGE_PCT}% per order),
+                    STT ({STT_PCT}%, sell side only), exchange charges, SEBI charges, stamp duty (
+                    {STAMP_DUTY_PCT}%, buy side only), and {GST_PCT}% GST on brokerage + exchange +
+                    SEBI charges only.
                   </span>
                 </span>
-              </th>
-            )}
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {ranked.map((q, i) => {
-            const netProfit = enteredAmount !== null ? calcNetProfit(q.nsePrice, q.bsePrice, enteredAmount) : null;
+            const netProfit = calcNetProfit(q);
             const deemphasize = Math.abs(q.spreadPct) <= SPREAD_GOOD_THRESHOLD_PCT;
             const isPinned = pinned.has(q.symbol);
-            const rowClassName = [isPinned && "row-pinned", flashSymbol === q.symbol && "row-flash"]
+            const isViewingHistory = q.symbol === selectedHistorySymbol;
+            // Cheaper exchange is where you'd buy (consuming its Ask Qty);
+            // the other exchange is where you'd sell into (consuming its
+            // Bid Qty) to capture the spread — those two are the
+            // actionable numbers for this row's current arb direction.
+            const buyOnNse = q.nsePrice < q.bsePrice;
+            const buyOnBse = q.bsePrice < q.nsePrice;
+            const rowClassName = [
+              isPinned && "row-pinned",
+              flashSymbol === q.symbol && "row-flash",
+              isViewingHistory && "row-history-viewing",
+            ]
               .filter(Boolean)
               .join(" ");
             return (
@@ -109,22 +129,24 @@ export default function QuoteTable({
                   </button>
                 </td>
                 <td className="num">₹{formatINR(q.nsePrice)}</td>
+                <td className={`num${buyOnBse ? " depth-actionable" : ""}`}>{formatQty(q.nseBidQty)}</td>
+                <td className={`num${buyOnNse ? " depth-actionable" : ""}`}>{formatQty(q.nseAskQty)}</td>
                 <td className="num">₹{formatINR(q.bsePrice)}</td>
+                <td className={`num${buyOnNse ? " depth-actionable" : ""}`}>{formatQty(q.bseBidQty)}</td>
+                <td className={`num${buyOnBse ? " depth-actionable" : ""}`}>{formatQty(q.bseAskQty)}</td>
                 <td className={`num diff-val ${q.spread >= 0 ? "diff-pos" : "diff-neg"}`}>
                   ₹{formatINR(Math.abs(q.spread))}
                 </td>
                 <td className={`num spread-val ${Math.abs(q.spreadPct) > SPREAD_GOOD_THRESHOLD_PCT ? "spread-good" : ""}`}>
                   {formatPct(q.spreadPct)}
                 </td>
-                {enteredAmount !== null && (
-                  <td
-                    className={`num net-profit-val ${
-                      netProfit === null ? "" : netProfit > 0 ? "net-profit-pos" : "net-profit-neg"
-                    } ${deemphasize ? "net-profit-muted" : ""}`}
-                  >
-                    {netProfit === null ? "—" : `${netProfit < 0 ? "-" : "+"}₹${formatINR(Math.abs(netProfit))}`}
-                  </td>
-                )}
+                <td
+                  className={`num net-profit-val ${
+                    netProfit === null ? "" : netProfit > 0 ? "net-profit-pos" : "net-profit-neg"
+                  } ${deemphasize ? "net-profit-muted" : ""}`}
+                >
+                  {netProfit === null ? "—" : `${netProfit < 0 ? "-" : "+"}₹${formatINR(Math.abs(netProfit))}`}
+                </td>
               </tr>
             );
           })}

@@ -29,14 +29,20 @@ def _today_str() -> str:
     return datetime.now(IST).date().isoformat()
 
 
+def _default_date_window() -> tuple[str, str]:
+    to_date = date.today().isoformat()
+    from_date = (date.today() - timedelta(days=365 * config.HISTORY_YEARS_BACK)).isoformat()
+    return from_date, to_date
+
+
 def _fetch_close_series(instrument_key: str, from_date: str, to_date: str) -> list:
+    """Raises on failure — callers decide whether to absorb it (the batch
+    build tolerates one bad symbol) or surface it (an on-demand single-
+    symbol fetch should tell the caller it failed, not go silently empty)."""
     try:
         candles = upstox_client.fetch_historical_candles(
             instrument_key, config.HISTORY_CANDLE_INTERVAL, from_date, to_date
         )
-    except Exception:
-        logger.exception(f"failed to fetch historical candles for {instrument_key}")
-        candles = []
     finally:
         time.sleep(_REQUEST_PACING_SECONDS)
 
@@ -48,25 +54,66 @@ def _fetch_close_series(instrument_key: str, from_date: str, to_date: str) -> li
     return [[row[0][:10], row[4]] for row in candles_sorted]
 
 
+def _safe_fetch_close_series(instrument_key: str, from_date: str, to_date: str) -> list:
+    """Batch-build variant of _fetch_close_series: absorbs one instrument's
+    failure so it doesn't take down the whole ~10-minute full-watchlist
+    rebuild."""
+    try:
+        return _fetch_close_series(instrument_key, from_date, to_date)
+    except Exception:
+        logger.exception(f"failed to fetch historical candles for {instrument_key}")
+        return []
+
+
 def build_history_cache(instrument_map: dict) -> dict:
     """Fetches HISTORY_YEARS_BACK of daily candles for every symbol in
     instrument_map, on both exchanges, and writes the result to
     HISTORY_CACHE_FILE as one superset series per instrument.
     """
-    to_date = date.today().isoformat()
-    from_date = (date.today() - timedelta(days=365 * config.HISTORY_YEARS_BACK)).isoformat()
+    from_date, to_date = _default_date_window()
 
     cache = {"cached_date": _today_str()}
     for symbol, keys in instrument_map.items():
         cache[symbol] = {
-            "nse": _fetch_close_series(keys["nse_key"], from_date, to_date),
-            "bse": _fetch_close_series(keys["bse_key"], from_date, to_date),
+            "nse": _safe_fetch_close_series(keys["nse_key"], from_date, to_date),
+            "bse": _safe_fetch_close_series(keys["bse_key"], from_date, to_date),
         }
 
     with open(config.HISTORY_CACHE_FILE, "w") as f:
         json.dump(cache, f)
 
     return cache
+
+
+def fetch_symbol_history_live(nse_key: str, bse_key: str) -> dict:
+    """On-demand fetch for a single symbol not yet in the cache — e.g. just
+    added via /watchlist/add, before the next daily rebuild picks it up.
+    Raises on failure (unlike the batch build, there's no larger job here
+    to protect by swallowing it) so the caller can return a clear error."""
+    from_date, to_date = _default_date_window()
+    return {
+        "nse": _fetch_close_series(nse_key, from_date, to_date),
+        "bse": _fetch_close_series(bse_key, from_date, to_date),
+    }
+
+
+def add_symbol_to_cache(symbol: str, series: dict) -> None:
+    """Merges a live-fetched symbol into the in-memory cache so a second
+    lookup is instant. In-memory only — NOT written to disk (newly-added
+    stocks are session-only until the next daily rebuild picks them up for
+    real from the live instrument_map, per the earlier decision to treat
+    them that way).
+
+    Skips merging if no cache has ever been built yet (_cache is None):
+    both history_cache_is_fresh and the cold-start branch of _should_rebuild
+    key off _cache's identity/cached_date, so turning None into a dict here
+    would look like "a real build already happened" and could block the
+    real one from ever running today.
+    """
+    global _cache
+    if _cache is None:
+        return
+    _cache[symbol] = series
 
 
 def load_history_cache() -> dict | None:

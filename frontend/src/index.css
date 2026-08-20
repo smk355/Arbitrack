@@ -569,6 +569,12 @@ td {
   color: var(--good);
 }
 
+.depth-actionable {
+  background: rgba(57, 135, 229, 0.12); /* --accent at 12% opacity */
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .col-rank {
   color: var(--muted);
   width: 58px;
@@ -630,6 +636,17 @@ td {
 
 .row-flash {
   animation: row-flash 1s ease-out;
+}
+
+.row-history-viewing {
+  background: rgba(57, 135, 229, 0.12); /* --accent at 12% opacity */
+}
+
+/* Matches .row-pinned's technique above: a border on <tr> itself doesn't
+   render in standard table layout, so the accent bar goes on the first
+   cell as an inset box-shadow instead. */
+.row-history-viewing td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .net-profit-header {

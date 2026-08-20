@@ -149,6 +149,7 @@ export default function App() {
             flashSymbol={flashSymbol}
             rowRefs={rowRefs}
             onHistoryClick={setSelectedHistorySymbol}
+            selectedHistorySymbol={selectedHistorySymbol}
           />
         </section>
 
